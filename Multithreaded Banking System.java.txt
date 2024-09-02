@@ -1,0 +1,297 @@
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+class Account {
+private String accountNumber;
+private double balance;
+private final Lock lock = new ReentrantLock();
+public Account(String accountNumber, double initialBalance) {
+this.accountNumber = accountNumber;
+this.balance = initialBalance;
+}
+public String getAccountNumber() {
+return accountNumber;
+}
+public double getBalance() {
+return balance;
+}
+public void deposit(double amount) {
+lock.lock();
+try {
+if (amount < 500) {
+throw new IllegalArgumentException("Minimum deposit amount is 500.");
+}
+balance += amount;
+} finally {
+lock.unlock();
+}
+}
+public boolean withdraw(double amount) {
+lock.lock();
+try {
+if (amount < 0) {
+throw new IllegalArgumentException("Withdrawal amount must be positive.");
+}
+8
+if (balance >= amount) {
+balance -= amount;
+return true;
+}
+return false;
+} finally {
+lock.unlock();
+}
+}
+public String toString() {
+return "Account " + accountNumber + ": Balance=" + balance;
+}
+}
+class Bank {
+private ArrayList<Account> accounts = new ArrayList<>();
+private ArrayList<Transaction> transactions = new ArrayList<>();
+private final Lock accountsLock = new ReentrantLock();
+private final Lock transactionsLock = new ReentrantLock();
+public void addAccount(Account account) {
+accountsLock.lock();
+try {
+accounts.add(account);
+} finally {
+accountsLock.unlock();
+}
+}
+public void deleteAccount(String accountNumber) {
+accountsLock.lock();
+try {
+accounts.removeIf(account -> account.getAccountNumber().equals(accountNumber));
+} finally {
+accountsLock.unlock();
+}
+}
+public ArrayList<Account> getAccounts() {
+accountsLock.lock();
+try {
+return new ArrayList<>(accounts);
+} finally {
+accountsLock.unlock();
+}
+}
+public Account getAccount(String accountNumber) {
+accountsLock.lock();
+try {
+for (Account account : accounts) {
+if (account.getAccountNumber().equals(accountNumber)) {
+return account;
+}
+}
+return null;
+} finally {
+accountsLock.unlock();
+}
+}
+public void logTransaction(String accountNumber, String operation, double amount) {
+transactionsLock.lock();
+try {
+Account account = getAccount(accountNumber);
+if (account != null) {
+double currentBalance = account.getBalance();
+transactions.add(new Transaction(accountNumber, operation, amount, currentBalance));
+}
+} finally {
+transactionsLock.unlock();
+}
+}
+public ArrayList<Transaction> getTransactions() {
+transactionsLock.lock();
+try {
+return new ArrayList<>(transactions);
+} finally {
+transactionsLock.unlock();
+}
+}
+}
+class Transaction {
+private String accountNumber;
+private String operation;
+private double amount;
+private double currentBalance;
+private String timestamp;
+public Transaction(String accountNumber, String operation, double amount, double currentBalance) {
+this.accountNumber = accountNumber;
+this.operation = operation;
+this.amount = amount;
+this.currentBalance = currentBalance;
+this.timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+}
+@Override
+public String toString() {
+return "[" + timestamp + "] " + accountNumber + ": " + operation + " " + amount + ", Current Balance:
+" + currentBalance;
+}
+}
+class BankGUI extends JFrame {
+private Bank bank;
+private JTextField accountNumberField;
+private JTextField amountField;
+private JTextArea logArea;
+public BankGUI(Bank bank) {
+this.bank = bank;
+setTitle("Banking System");
+setSize(800, 400);
+setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+JPanel panel = new JPanel();
+panel.setLayout(new GridLayout(5, 2));
+panel.add(new JLabel("Account Number:"));
+accountNumberField = new JTextField();
+panel.add(accountNumberField);
+panel.add(new JLabel("Amount:"));
+amountField = new JTextField();
+panel.add(amountField);
+JButton depositButton = new JButton("Deposit");
+depositButton.addActionListener(new ActionListener() {
+@Override
+public void actionPerformed(ActionEvent e) {
+performTransaction("deposit");
+}
+});
+panel.add(depositButton);
+JButton withdrawButton = new JButton("Withdraw");
+withdrawButton.addActionListener(new ActionListener() {
+@Override
+public void actionPerformed(ActionEvent e) {
+performTransaction("withdraw");
+}
+});
+panel.add(withdrawButton);
+JButton createAccountButton = new JButton("Create Account");
+createAccountButton.addActionListener(new ActionListener() {
+@Override
+public void actionPerformed(ActionEvent e) {
+createAccount();
+}
+});
+panel.add(createAccountButton);
+JButton deleteAccountButton = new JButton("Delete Account");
+deleteAccountButton.addActionListener(new ActionListener() {
+@Override
+public void actionPerformed(ActionEvent e) {
+deleteAccount();
+}
+});
+panel.add(deleteAccountButton);
+JButton viewAccountsButton = new JButton("View Accounts");
+viewAccountsButton.addActionListener(new ActionListener() {
+@Override
+public void actionPerformed(ActionEvent e) {
+viewAccounts();
+}
+});
+panel.add(viewAccountsButton);
+logArea = new JTextArea();
+logArea.setEditable(false);
+JScrollPane scrollPane = new JScrollPane(logArea);
+panel.add(scrollPane);
+add(panel);
+Timer timer = new Timer(1000, new ActionListener() {
+@Override
+public void actionPerformed(ActionEvent e) {
+displayTransactions();
+}
+});
+timer.start();
+}
+private void createAccount() {
+try {
+String accountNumber = JOptionPane.showInputDialog(this, "Enter new account number:");
+if (accountNumber != null) {
+Account newAccount = new Account(accountNumber, 0);
+bank.addAccount(newAccount);
+JOptionPane.showMessageDialog(this, "Account created successfully.");
+}
+} catch (Exception e) {
+JOptionPane.showMessageDialog(this, "Error creating account: " + e.getMessage(), "Error",
+JOptionPane.ERROR_MESSAGE);
+}
+}
+private void deleteAccount() {
+try {
+String accountNumber = JOptionPane.showInputDialog(this, "Enter account number to delete:");
+if (accountNumber != null) {
+bank.deleteAccount(accountNumber);
+JOptionPane.showMessageDialog(this, "Account deleted successfully.");
+}
+} catch (Exception e) {
+JOptionPane.showMessageDialog(this, "Error deleting account: " + e.getMessage(), "Error",
+JOptionPane.ERROR_MESSAGE);
+}
+}
+private void viewAccounts() {
+try {
+ArrayList<Account> accounts = bank.getAccounts();
+StringBuilder message = new StringBuilder("Accounts:\n");
+if (accounts.isEmpty()) {
+message.append("No accounts");
+} else {
+for (Account account : accounts) {
+message.append(account.toString()).append("\n");
+}
+}
+JOptionPane.showMessageDialog(this, message.toString(), "Account Details",
+JOptionPane.INFORMATION_MESSAGE);
+} catch (Exception e) {
+JOptionPane.showMessageDialog(this, "Error viewing accounts: " + e.getMessage(), "Error",
+JOptionPane.ERROR_MESSAGE);
+}
+}
+private void performTransaction(String operation) {
+try {
+String accountNumber = accountNumberField.getText();
+String amountText = amountField.getText();
+if (accountNumber.isEmpty() || amountText.isEmpty()) {
+throw new IllegalArgumentException("Account number and amount cannot be empty.");
+}
+double amount = Double.parseDouble(amountText);
+Account account = bank.getAccount(accountNumber);
+if (account == null) {
+throw new IllegalArgumentException("Account not found.");
+}
+if (operation.equals("deposit")) {
+account.deposit(amount);
+} else if (operation.equals("withdraw")) {
+if (!account.withdraw(amount)) {
+throw new IllegalArgumentException("Insufficient funds.");
+}
+bank.logTransaction(accountNumber, "Withdraw", amount);
+}
+bank.logTransaction(accountNumber, operation, amount);
+displayTransactions();
+} catch (NumberFormatException e) {
+JOptionPane.showMessageDialog(this, "Invalid amount format.", "Error",
+JOptionPane.ERROR_MESSAGE);
+} catch (IllegalArgumentException e) {
+JOptionPane.showMessageDialog(this, e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+}
+}
+private void displayTransactions() {
+ArrayList<Transaction> transactions = bank.getTransactions();
+logArea.setText("");
+for (Transaction transaction : transactions) {
+logArea.append(transaction.toString() + "\n");
+}
+}
+public static void main(String[] args) {
+Bank bank = new Bank();
+SwingUtilities.invokeLater(new Runnable() {
+@Override
+public void run() {
+new BankGUI(bank).setVisible(true);
+}
+});
+}
+}
+ 
